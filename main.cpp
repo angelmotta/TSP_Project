@@ -60,10 +60,10 @@ int main (int argc, char *argv[]) {
         // Reciben el numero de vertices y creamos la matriz de costos
         MPI_Bcast(&nVertices, 1, MPI_INT, master, MPI_COMM_WORLD);
         vector <int> grafo(nVertices * nVertices, 0);
-        MPI_Bcast(&grafo[0], n*n, MPI_INT, master, MPI_COMM_WORLD);
+        MPI_Bcast(&grafo[0], nVertices*nVertices, MPI_INT, master, MPI_COMM_WORLD);
 
         // creamos la lista de posibles caminos
-        list<vector<int>> caminos;
+        list< vector<int> > caminos;
 
         // Mientras no recibemos un stop del maestro seguimos trabajando
         MPI_Status status;
@@ -81,7 +81,7 @@ int main (int argc, char *argv[]) {
                 vector<int> camino(nVertices);
                 vector<int> metadata(4);
                 MPI_Recv(&camino[0], nVertices, MPI_INT, master, orden, MPI_COMM_WORLD, &status);
-                MPI_Recv(&metada[0], 4, MPI_INT, master, orden, MPI_COMM_WORLD, &status);
+                MPI_Recv(&metadata[0], 4, MPI_INT, master, orden, MPI_COMM_WORLD, &status);
                 costoOptimo = metadata[0];
                 caminos.push_front(camino);
                 // (while) Procesamos los vectores (caminos) de la lista
