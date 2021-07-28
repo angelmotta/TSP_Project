@@ -9,6 +9,17 @@ using namespace std;
 int nVertices = 0;
 vector <int> grafo;
 
+int getProcLibre(vector<bool> &procOcupados, int totalProc, int &libres){
+    for (int i = 0; i < totalProc; i++){
+        if (procOcupados[i] == false) {
+            procOcupados[i] = true;
+            libres--;
+            return i;
+        }
+    }
+    return -1;
+}
+
 int minCost( int start, int idx){
     int minimo = INT_MAX;
     for(int i=0; i<nVertices; i++){
@@ -72,6 +83,39 @@ int main (int argc, char *argv[]) {
         MPI_Send(&metadata[0], 4, MPI_INT, procDisponible, 1, MPI_COMM_WORLD);
 
         // Mientras haya algun proceso trabajando seguir computando el TSP
+        while (procLibres != size-1) {
+            MPI_Status status;
+            MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+            int orden = status.MPI_TAG;
+            int src = status.MPI_SOURCE;
+
+            if (orden == 2) { // se halló un mejor camino con menor costo 
+               MPI_Recv(&camino[0], nVertices, MPI_INT, src, orden, MPI_COMM_WORLD, &status);
+               MPI_Recv(&metadata[0], 4, MPI_INT, src, orden, MPI_COMM_WORLD, &status);
+               costoOptimo = metadata[1];
+            }
+
+            if (orden == 4) {   // recibe mensaje para seguir descendiendo
+                vector<int> msg(2);
+                MPI_Recv(&msg[0], 2, MPI_INT, src, orden, MPI_COMM_WORLD, &status);
+                int currMinCost = msg[0];
+                int caminosPorProcesar = msg[1];
+                if (currMinCost < costoOptimo) {
+                    int procAsignados = (caminosPorProcesar <= procLibres) ? caminosPorProcesar : procLibres;
+                    vector<int> slavesAsignados(procAsignados);
+                    for (int i=0; i<procAsignados; i++) {
+                        slavesAsignados[i] = getProcLibre(procOcupados, size, procLibres);
+                    }
+                    MPI_Send(&costoOptimo, 1, MPI_INT, src, 4, MPI_COMM_WORLD);
+                    MPI_Send(&slavesAsignados[0], procAsignados, MPI_INT, src, 4, MPI_COMM_WORLD);
+                }
+                else {
+                    orden = 5;      // detener descenso
+                    MPI_Send(&costoOptimo, 1, MPI_INT, src, orden, MPI_COMM_WORLD);
+                }
+            }
+            
+        }
         // Detener procesos esclavos
         // Imprimir costo minimo
         // Imprimir ruta optima TSP
@@ -128,6 +172,18 @@ int main (int argc, char *argv[]) {
                         msg[0] = currMinCost;
                         msg[1] = caminos.size();
                         MPI_Send(&msg[0], 2, MPI_INT, master, 4, MPI_COMM_WORLD); // orden 4: seguir descendiendo
+
+                        // Recibir el costo optimo global desde el master
+                        MPI_Recv(&costoOptimo, 1, MPI_INT, master, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+
+                        // Verificar la orden del master
+                        if (status.MPI_TAG == 4) {
+                            // Branch: ramificar el problema
+                        }
+                        else {
+                            // orden 5: No seguir
+                            continue;
+                        }
                     }
 
                     // Indicar status libre del proceso y notificar al master
