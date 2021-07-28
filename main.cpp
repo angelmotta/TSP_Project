@@ -40,7 +40,7 @@ int main (int argc, char *argv[]) {
 
         // Inicializar pathTSP y metada
         int costoOptimo = INT_MAX;
-        vector <int> camino(n, -1);
+        vector <int> camino(nVertices, -1);
 
         // metadata[0] = costo optimo | metadata[1] = costo actual
         // metadata[2] = ultimo vertice del camino | metadata[3] = ha llegado a la hoja
@@ -48,7 +48,7 @@ int main (int argc, char *argv[]) {
         metadata[0] = costoOptimo;
 
         // Enviar camino y metadata
-        MPI_Send(&camino[0], n, MPI_INT, procDisponible, 1, MPI_COMM_WORLD);
+        MPI_Send(&camino[0], nVertices, MPI_INT, procDisponible, 1, MPI_COMM_WORLD);
         MPI_Send(&metadata[0], 4, MPI_INT, procDisponible, 1, MPI_COMM_WORLD);
 
         // Mientras haya algun proceso trabajando seguir computando el TSP
@@ -57,16 +57,42 @@ int main (int argc, char *argv[]) {
         // Imprimir ruta optima TSP
     }
     else { // Los otros procesos
-        // Reciben el numero de vertices y la matriz de costos
-        // Creamos la lista de vectores de rutas
+        // Reciben el numero de vertices y creamos la matriz de costos
+        MPI_Bcast(&nVertices, 1, MPI_INT, master, MPI_COMM_WORLD);
+        vector <int> grafo(nVertices * nVertices, 0);
+        MPI_Bcast(&grafo[0], n*n, MPI_INT, master, MPI_COMM_WORLD);
+
+        // creamos la lista de posibles caminos
+        list<vector<int>> caminos;
+
         // Mientras no recibemos un stop del maestro seguimos trabajando
-        // Recibimos una orden del maestro
-        // Caso1: Terminar
-        // Caso2: Descender en el arbol
-            // (while) Procesamos los vectores (rutas) de la lista
-            // Obtener el lower_bound (costo min hasta ese momento)
-            // Actualizamos el min costo global de ser el caso
-        // Indicar status libre del proceso y notificar al master
+        MPI_Status status;
+        int costoOptimo;
+        while(true) {
+            MPI_Probe(master, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+            // Recibimos una orden del maestro
+            int orden = status.MPI_TAG;
+            // Caso1: Terminar
+            if (orden == 0) {
+                // TODO
+            }
+            else if (orden == 1) { // Caso2: Descender en el arbol
+                // posible camino
+                vector<int> camino(nVertices);
+                vector<int> metadata(4);
+                MPI_Recv(&camino[0], nVertices, MPI_INT, master, orden, MPI_COMM_WORLD, &status);
+                MPI_Recv(&metada[0], 4, MPI_INT, master, orden, MPI_COMM_WORLD, &status);
+                costoOptimo = metadata[0];
+                caminos.push_front(camino);
+                // (while) Procesamos los vectores (caminos) de la lista
+                while(!caminos.empty()){
+                    // TODO
+                    // Obtener el lower_bound (costo min hasta ese momento)
+                    // Actualizamos el min costo global de ser el caso
+                    // Indicar status libre del proceso y notificar al master
+                }
+            }
+        }
     }
     return 0;
 }
