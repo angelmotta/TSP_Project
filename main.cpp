@@ -2,10 +2,30 @@
 #include <iostream>
 #include <vector>
 #include <list>
+#include <climits>
 
 using namespace std;
 
 int nVertices = 0;
+vector <int> grafo;
+
+int minCost( int start, int idx){
+    int minimo = INT_MAX;
+    for(int i=0; i<nVertices; i++){
+        if(i != idx && grafo[start + i] < minimo)
+            minimo = grafo[start + i];
+    }
+    return minimo;
+}
+
+int getLowerBound(vector<int>& camino, int currCost) {
+    for(int i=0; i<nVertices; i++){
+        if(camino[i] == -1){
+            currCost += minCost(i*nVertices, i);
+        }
+    }
+    return currCost;
+}
 
 int main (int argc, char *argv[]) {
     int rank, size;
@@ -17,7 +37,7 @@ int main (int argc, char *argv[]) {
     if (rank == master) {
         // Leer matriz adyacencia
         cin >> nVertices;
-        vector <int> grafo(nVertices * nVertices, 0);
+        grafo.resize(nVertices * nVertices);
         for (int i = 0; i < nVertices; i++) {
             for (int j = 0; j < nVertices; j++) {
                 cin >> grafo[i * nVertices + j];
@@ -59,11 +79,11 @@ int main (int argc, char *argv[]) {
     else { // Los otros procesos
         // Reciben el numero de vertices y creamos la matriz de costos
         MPI_Bcast(&nVertices, 1, MPI_INT, master, MPI_COMM_WORLD);
-        vector <int> grafo(nVertices * nVertices, 0);
+        grafo.resize(nVertices * nVertices);
         MPI_Bcast(&grafo[0], nVertices*nVertices, MPI_INT, master, MPI_COMM_WORLD);
 
-        // creamos la lista de posibles caminos
-        list< vector<int> > caminos;
+        // creamos la lista de posibles caminos con su metadata
+        list< pair< vector<int>, vector<int> > > caminos;
 
         // Mientras no recibemos un stop del maestro seguimos trabajando
         MPI_Status status;
@@ -83,12 +103,33 @@ int main (int argc, char *argv[]) {
                 MPI_Recv(&camino[0], nVertices, MPI_INT, master, orden, MPI_COMM_WORLD, &status);
                 MPI_Recv(&metadata[0], 4, MPI_INT, master, orden, MPI_COMM_WORLD, &status);
                 costoOptimo = metadata[0];
-                caminos.push_front(camino);
+                caminos.push_front({camino, metadata});
                 // (while) Procesamos los vectores (caminos) de la lista
                 while(!caminos.empty()){
-                    // TODO
+                    vector<int> posibleCamino = caminos.front().first;
+                    vector<int> posMetadata = caminos.front().second;
+                    caminos.pop_front();
+                    // se llega al nivel hoja
+                    if (posMetadata[3] == 1) {
+                        if (posMetadata[1] < costoOptimo) {    // si el costo actual es menor al optimo
+                            costoOptimo = posMetadata[1];
+                            MPI_Send(&posibleCamino[0], nVertices, MPI_INT, master, 2, MPI_COMM_WORLD);
+                            MPI_Send(&posMetadata[0], 4, MPI_INT, master, 2, MPI_COMM_WORLD);
+                        }
+                        continue;
+                    }
+
                     // Obtener el lower_bound (costo min hasta ese momento)
+                    int currMinCost = getLowerBound(posibleCamino, posMetadata[1]);
+
                     // Actualizamos el min costo global de ser el caso
+                    if (currMinCost < costoOptimo) {
+                        vector<int> msg(2);
+                        msg[0] = currMinCost;
+                        msg[1] = caminos.size();
+                        MPI_Send(&msg[0], 2, MPI_INT, master, 4, MPI_COMM_WORLD); // orden 4: seguir descendiendo
+                    }
+
                     // Indicar status libre del proceso y notificar al master
                 }
             }
