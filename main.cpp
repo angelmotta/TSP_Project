@@ -38,6 +38,29 @@ int getLowerBound(vector<int>& camino, int currCost) {
     return currCost;
 }
 
+void getBranches(list< pair<vector<int>, vector<int> > >& caminos, vector<int>& camino, vector<int>& metadata) {
+    bool encontrado = false;
+    int ultimoNodoTomado = metadata[2];
+    for (int i = 0; i < nVertices; i++) {
+        if (camino[i] == -1 && i != ultimoNodoTomado) {
+            encontrado = true;
+            vector<int> nuevoCamino = camino;
+            nuevoCamino[ultimoNodoTomado] = i;
+            vector<int> nuevaMetadata = metadata;
+            nuevaMetadata[1] += grafo[ultimoNodoTomado * nVertices + i];
+            nuevaMetadata[2] = i; // ultimo nodo Tomado
+            caminos.push_front(make_pair(nuevoCamino, nuevaMetadata));
+        }
+    }
+    if (!encontrado) { // llegamos a un nivel hoja
+        camino[ultimoNodoTomado] = 0;
+        metadata[1] += grafo[ultimoNodoTomado * nVertices];
+        metadata[2] = -1;
+        metadata[3] = 1; // 1: nivel hoja
+        caminos.push_front(make_pair(camino, metadata));
+    }
+}
+
 int main (int argc, char *argv[]) {
     int rank, size;
     int master = 0;
@@ -94,7 +117,11 @@ int main (int argc, char *argv[]) {
                MPI_Recv(&metadata[0], 4, MPI_INT, src, orden, MPI_COMM_WORLD, &status);
                costoOptimo = metadata[1];
             }
-
+            if (orden == 3) { // Proceso en estado libre
+                MPI_Recv(&orden, 1, MPI_INT, src, orden, MPI_COMM_WORLD,  &status);
+                procLibres++;
+                procOcupados[status.MPI_SOURCE] = false;
+            }
             if (orden == 4) {   // recibe mensaje para seguir descendiendo
                 vector<int> msg(2);
                 MPI_Recv(&msg[0], 2, MPI_INT, src, orden, MPI_COMM_WORLD, &status);
@@ -114,11 +141,11 @@ int main (int argc, char *argv[]) {
                     MPI_Send(&costoOptimo, 1, MPI_INT, src, orden, MPI_COMM_WORLD);
                 }
             }
-            
         }
         // Detener procesos esclavos
         // Imprimir costo minimo
         // Imprimir ruta optima TSP
+        // Finalizar MPI
     }
     else { // Los otros procesos
         // Reciben el numero de vertices y creamos la matriz de costos
@@ -147,7 +174,8 @@ int main (int argc, char *argv[]) {
                 MPI_Recv(&camino[0], nVertices, MPI_INT, master, orden, MPI_COMM_WORLD, &status);
                 MPI_Recv(&metadata[0], 4, MPI_INT, master, orden, MPI_COMM_WORLD, &status);
                 costoOptimo = metadata[0];
-                caminos.push_front({camino, metadata});
+                caminos.push_front(make_pair(camino, metadata));
+
                 // (while) Procesamos los vectores (caminos) de la lista
                 while(!caminos.empty()){
                     vector<int> posibleCamino = caminos.front().first;
@@ -178,18 +206,34 @@ int main (int argc, char *argv[]) {
 
                         // Verificar la orden del master
                         if (status.MPI_TAG == 4) {
+                            vector<int> slavesAsignados(caminos.size());
+                            MPI_Recv(&slavesAsignados[0], caminos.size(), MPI_INT, master, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+                            int totalAsignados;
+                            MPI_Get_count(&status, MPI_INT, &totalAsignados);
                             // Branch: ramificar el problema
+                            getBranches(caminos, camino, metadata);
+                            // Repartir carga de trabajo entre esclavos disponibles
+                            for (int i = 0; i < totalAsignados; i++) {
+                                vector<int> nCamino = caminos.front().first;
+                                vector<int> nMetadata = caminos.front().second;
+                                caminos.pop_front();
+                                nMetadata[0] = costoOptimo;
+                                MPI_Send(&nCamino[0], nVertices, MPI_INT, slavesAsignados[i], 1, MPI_COMM_WORLD);
+                                MPI_Send(&nMetadata[0], 4, MPI_INT, slavesAsignados[i], 1, MPI_COMM_WORLD);
+                            }
                         }
                         else {
                             // orden 5: No seguir
                             continue;
                         }
                     }
-
-                    // Indicar status libre del proceso y notificar al master
                 }
+                // Indicar status libre del proceso y notificar al master
+                orden = 3;
+                MPI_Send(&orden, 1, MPI_INT, master, orden, MPI_COMM_WORLD);
             }
         }
+        MPI_Finalize();
     }
     return 0;
 }
