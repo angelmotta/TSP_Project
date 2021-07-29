@@ -130,7 +130,7 @@ int main (int argc, char *argv[]) {
                 if (currMinCost < costoOptimo) {
                     int procAsignados = (caminosPorProcesar <= procLibres) ? caminosPorProcesar : procLibres;
                     vector<int> slavesAsignados(procAsignados);
-                    for (int i=0; i<procAsignados; i++) {
+                    for (int i = 0; i < procAsignados; i++) {
                         slavesAsignados[i] = getProcLibre(procOcupados, size, procLibres);
                     }
                     MPI_Send(&costoOptimo, 1, MPI_INT, src, 4, MPI_COMM_WORLD);
@@ -143,9 +143,24 @@ int main (int argc, char *argv[]) {
             }
         }
         // Detener procesos esclavos
+        int orden = 0;      // 0: terminar proceso
+        for (int proc_i = 1; proc_i < size; proc_i++){
+            MPI_Send(&orden, 1, MPI_INT, proc_i, orden, MPI_COMM_WORLD);
+        }
+
         // Imprimir costo minimo
+        cout << "Costo mínimo: " << costoOptimo << endl;
         // Imprimir ruta optima TSP
+        cout << "Camino optimo: 0 ";
+        int nodo = camino[0];
+        while(nodo != 0) {
+            cout << nodo << " ";
+            nodo = camino[nodo];
+        }
+        cout << "0" << endl;
+
         // Finalizar MPI
+        MPI_Finalize();
     }
     else { // Los otros procesos
         // Reciben el numero de vertices y creamos la matriz de costos
@@ -160,19 +175,23 @@ int main (int argc, char *argv[]) {
         MPI_Status status;
         int costoOptimo;
         while(true) {
-            MPI_Probe(master, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+            MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
             // Recibimos una orden del maestro
             int orden = status.MPI_TAG;
+            int src = status.MPI_SOURCE;
+
             // Caso1: Terminar
             if (orden == 0) {
-                // TODO
+                MPI_Recv(&orden, 1, MPI_INT, src, orden, MPI_COMM_WORLD, &status);
+                break;
             }
-            else if (orden == 1) { // Caso2: Descender en el arbol
+            // Caso2: Descender en el arbol
+            if (orden == 1) {
                 // posible camino
                 vector<int> camino(nVertices);
                 vector<int> metadata(4);
-                MPI_Recv(&camino[0], nVertices, MPI_INT, master, orden, MPI_COMM_WORLD, &status);
-                MPI_Recv(&metadata[0], 4, MPI_INT, master, orden, MPI_COMM_WORLD, &status);
+                MPI_Recv(&camino[0], nVertices, MPI_INT, src, orden, MPI_COMM_WORLD, &status);
+                MPI_Recv(&metadata[0], 4, MPI_INT, src, orden, MPI_COMM_WORLD, &status);
                 costoOptimo = metadata[0];
                 caminos.push_front(make_pair(camino, metadata));
 
