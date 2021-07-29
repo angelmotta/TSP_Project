@@ -64,11 +64,13 @@ void getBranches(list< pair<vector<int>, vector<int> > >& caminos, vector<int>& 
 int main (int argc, char *argv[]) {
     int rank, size;
     int master = 0;
+    double start, end;
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
     if (rank == master) {
+        start = MPI_Wtime();
         // Leer matriz adyacencia
         cin >> nVertices;
         grafo.resize(nVertices * nVertices);
@@ -106,29 +108,35 @@ int main (int argc, char *argv[]) {
         MPI_Send(&metadata[0], 4, MPI_INT, procDisponible, 1, MPI_COMM_WORLD);
 
         // Mientras haya algun proceso trabajando seguir computando el TSP
+        //printf("Proc libres: %d\n", procLibres);
         while (procLibres != size-1) {
             MPI_Status status;
             MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
             int orden = status.MPI_TAG;
             int src = status.MPI_SOURCE;
-
+            //printf("Src: %d \n\t orden: %d\n", src, orden);
             if (orden == 2) { // se halló un mejor camino con menor costo 
+               //printf("\t LLego a la hoja\n");
                MPI_Recv(&camino[0], nVertices, MPI_INT, src, orden, MPI_COMM_WORLD, &status);
                MPI_Recv(&metadata[0], 4, MPI_INT, src, orden, MPI_COMM_WORLD, &status);
                costoOptimo = metadata[1];
             }
             if (orden == 3) { // Proceso en estado libre
+                //printf("\t El proceso esta libre\n");
                 MPI_Recv(&orden, 1, MPI_INT, src, orden, MPI_COMM_WORLD,  &status);
                 procLibres++;
                 procOcupados[status.MPI_SOURCE] = false;
             }
             if (orden == 4) {   // recibe mensaje para seguir descendiendo
+                //printf("\t BnB, seguir descendiendo\n");
                 vector<int> msg(2);
                 MPI_Recv(&msg[0], 2, MPI_INT, src, orden, MPI_COMM_WORLD, &status);
                 int currMinCost = msg[0];
                 int caminosPorProcesar = msg[1];
                 if (currMinCost < costoOptimo) {
                     int procAsignados = (caminosPorProcesar <= procLibres) ? caminosPorProcesar : procLibres;
+                    //printf("\t se solicitan %d esclavos\n", caminosPorProcesar);
+                    //printf("\t se aignan %d esclavos\n", procAsignados);
                     vector<int> slavesAsignados(procAsignados);
                     for (int i = 0; i < procAsignados; i++) {
                         slavesAsignados[i] = getProcLibre(procOcupados, size, procLibres);
@@ -147,7 +155,8 @@ int main (int argc, char *argv[]) {
         for (int proc_i = 1; proc_i < size; proc_i++){
             MPI_Send(&orden, 1, MPI_INT, proc_i, orden, MPI_COMM_WORLD);
         }
-
+        end = MPI_Wtime();
+        printf("Tiempo: %g segundos\n", end - start);
         // Imprimir costo minimo
         cout << "Costo mínimo: " << costoOptimo << endl;
         // Imprimir ruta optima TSP
@@ -230,7 +239,7 @@ int main (int argc, char *argv[]) {
                             int totalAsignados;
                             MPI_Get_count(&status, MPI_INT, &totalAsignados);
                             // Branch: ramificar el problema
-                            getBranches(caminos, camino, metadata);
+                            getBranches(caminos, posibleCamino, posMetadata);
                             // Repartir carga de trabajo entre esclavos disponibles
                             for (int i = 0; i < totalAsignados; i++) {
                                 vector<int> nCamino = caminos.front().first;
