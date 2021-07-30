@@ -13,6 +13,7 @@ namespace TSP {
 
     int nVertices = 0;
     vector <int> grafo;
+    vector <string> cityNames;
 
     int getProcLibre(vector<bool> &procOcupados, int totalProc, int &libres){
         for (int i = 0; i < totalProc; i++){
@@ -150,13 +151,13 @@ namespace TSP {
             // Imprimir costo minimo
             cout << "\tCosto mínimo: \t" << costoOptimo << endl;
             // Imprimir ruta optima TSP
-            cout << "\tCamino optimo: \t0 ";
+            cout << "\tCamino optimo: \t" << cityNames[0] << " -> ";
             int nodo = camino[0];
             while(nodo != 0) {
-                cout << nodo << " ";
+                cout << cityNames[nodo] << " -> ";
                 nodo = camino[nodo];
             }
-            cout << "0" << endl;
+            cout << cityNames[0] << endl;
             printf("\tTiempo: \t%g segundos\n", end - start);
         }
         return 0;

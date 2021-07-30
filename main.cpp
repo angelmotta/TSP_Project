@@ -7,6 +7,12 @@ void firstRead() {
     // Leer matriz adyacencia
     cout << "Numero de ciudades: ";
     cin >> TSP::nVertices;
+    TSP::cityNames.resize(TSP::nVertices);
+    cout << "Nombre de las ciudades: \n";
+    for (int i = 0; i < TSP::nVertices; i++) {
+        cout << " Ciudad " << i << ": ";
+        cin >> TSP::cityNames[i];
+    }
     TSP::grafo.resize(TSP::nVertices * TSP::nVertices);
     cout << "\nmatriz de adyacencia:\n";
     for (int i = 0; i < TSP::nVertices; i++) {
@@ -66,10 +72,14 @@ int main(int argc, char *argv[]) {
                 firstRead();
             } 
             else if (opcion == 2) {
+                string nCity;
+                cout << "Nombre de la ciudad: ";
+                cin >> nCity;
+                TSP::cityNames.push_back(nCity);
                 vector<int> dist(TSP::nVertices);
                 cout << "Agregar la distancia desde la nueva ciudad \n";
                 for (int j = 0; j < TSP::nVertices; j++) {
-                     cout << "Hacia la ciudad " << j << ": ";
+                     cout << "Hacia " << TSP::cityNames[j] << ": ";
                      cin >> dist[j];
                 }
                 TSP::nVertices++;
