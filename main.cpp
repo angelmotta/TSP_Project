@@ -14,7 +14,7 @@ void firstRead() {
         cin >> TSP::cityNames[i];
     }
     TSP::grafo.resize(TSP::nVertices * TSP::nVertices);
-    cout << "\nmatriz de adyacencia:\n";
+    cout << "\nMatriz de adyacencia:\n";
     for (int i = 0; i < TSP::nVertices; i++) {
         for (int j = 0; j < TSP::nVertices; j++) {
             cin >> TSP::grafo[i * TSP::nVertices + j];
