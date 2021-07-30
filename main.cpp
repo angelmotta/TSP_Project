@@ -65,6 +65,7 @@ int main (int argc, char *argv[]) {
     int rank, size;
     int master = 0;
     double start, end;
+    double startComm, endComm, totalComm = 0, globalComm = 0;
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -81,9 +82,11 @@ int main (int argc, char *argv[]) {
         }
 
         // Broadcast del número de vertices y la matriz
+        startComm = MPI_Wtime();
         MPI_Bcast(&nVertices, 1, MPI_INT, master, MPI_COMM_WORLD);
         MPI_Bcast(&grafo[0], nVertices * nVertices, MPI_INT, master, MPI_COMM_WORLD);
-
+        endComm = MPI_Wtime();
+        totalComm += (endComm - startComm);
         // Setear estado de procesos (ocupado o libre)
         int procLibres = size - 1;
         vector <bool> procOcupados(size, false);
@@ -104,8 +107,11 @@ int main (int argc, char *argv[]) {
         metadata[0] = costoOptimo;
 
         // Enviar camino y metadata
+        startComm = MPI_Wtime();
         MPI_Send(&camino[0], nVertices, MPI_INT, procDisponible, 1, MPI_COMM_WORLD);
         MPI_Send(&metadata[0], 4, MPI_INT, procDisponible, 1, MPI_COMM_WORLD);
+        endComm = MPI_Wtime();
+        totalComm += (endComm - startComm);
 
         // Mientras haya algun proceso trabajando seguir computando el TSP
         //printf("Proc libres: %d\n", procLibres);
@@ -117,20 +123,29 @@ int main (int argc, char *argv[]) {
             //printf("Src: %d \n\t orden: %d\n", src, orden);
             if (orden == 2) { // se halló un mejor camino con menor costo 
                //printf("\t LLego a la hoja\n");
+               startComm = MPI_Wtime();
                MPI_Recv(&camino[0], nVertices, MPI_INT, src, orden, MPI_COMM_WORLD, &status);
                MPI_Recv(&metadata[0], 4, MPI_INT, src, orden, MPI_COMM_WORLD, &status);
+               endComm = MPI_Wtime();
+               totalComm += (endComm - startComm);
                costoOptimo = metadata[1];
             }
             if (orden == 3) { // Proceso en estado libre
                 //printf("\t El proceso esta libre\n");
+                startComm = MPI_Wtime();
                 MPI_Recv(&orden, 1, MPI_INT, src, orden, MPI_COMM_WORLD,  &status);
+                endComm = MPI_Wtime();
+                totalComm += (endComm - startComm);
                 procLibres++;
                 procOcupados[status.MPI_SOURCE] = false;
             }
             if (orden == 4) {   // recibe mensaje para seguir descendiendo
                 //printf("\t BnB, seguir descendiendo\n");
                 vector<int> msg(2);
+                startComm = MPI_Wtime();
                 MPI_Recv(&msg[0], 2, MPI_INT, src, orden, MPI_COMM_WORLD, &status);
+                endComm = MPI_Wtime();
+                totalComm += (endComm - startComm);
                 int currMinCost = msg[0];
                 int caminosPorProcesar = msg[1];
                 if (currMinCost < costoOptimo) {
@@ -141,22 +156,30 @@ int main (int argc, char *argv[]) {
                     for (int i = 0; i < procAsignados; i++) {
                         slavesAsignados[i] = getProcLibre(procOcupados, size, procLibres);
                     }
+                    startComm = MPI_Wtime();
                     MPI_Send(&costoOptimo, 1, MPI_INT, src, 4, MPI_COMM_WORLD);
                     MPI_Send(&slavesAsignados[0], procAsignados, MPI_INT, src, 4, MPI_COMM_WORLD);
+                    endComm = MPI_Wtime();
+                    totalComm += (endComm - startComm);
                 }
                 else {
                     orden = 5;      // detener descenso
+                    startComm = MPI_Wtime();
                     MPI_Send(&costoOptimo, 1, MPI_INT, src, orden, MPI_COMM_WORLD);
+                    endComm = MPI_Wtime();
+                    totalComm += (endComm - startComm);
                 }
             }
         }
         // Detener procesos esclavos
         int orden = 0;      // 0: terminar proceso
+        startComm = MPI_Wtime();
         for (int proc_i = 1; proc_i < size; proc_i++){
             MPI_Send(&orden, 1, MPI_INT, proc_i, orden, MPI_COMM_WORLD);
         }
+        endComm = MPI_Wtime();
+        totalComm += (endComm - startComm);
         end = MPI_Wtime();
-        printf("Tiempo: %g segundos\n", end - start);
         // Imprimir costo minimo
         cout << "Costo mínimo: " << costoOptimo << endl;
         // Imprimir ruta optima TSP
@@ -168,6 +191,10 @@ int main (int argc, char *argv[]) {
         }
         cout << "0" << endl;
 
+        MPI_Reduce(&totalComm, &globalComm, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        printf("Tiempo total: %g segundos\n", end - start);
+        printf("Tiempo comunicación rank#%d: %g segundos\n", rank, totalComm);
+        printf("Tiempo Total de comunicación: %g segundos\n", globalComm);
         // Finalizar MPI
         MPI_Finalize();
     }
@@ -246,8 +273,11 @@ int main (int argc, char *argv[]) {
                                 vector<int> nMetadata = caminos.front().second;
                                 caminos.pop_front();
                                 nMetadata[0] = costoOptimo;
+                                startComm = MPI_Wtime();
                                 MPI_Send(&nCamino[0], nVertices, MPI_INT, slavesAsignados[i], 1, MPI_COMM_WORLD);
                                 MPI_Send(&nMetadata[0], 4, MPI_INT, slavesAsignados[i], 1, MPI_COMM_WORLD);
+                                endComm = MPI_Wtime();
+                                totalComm += (endComm - startComm);
                             }
                         }
                         else {
@@ -261,6 +291,8 @@ int main (int argc, char *argv[]) {
                 MPI_Send(&orden, 1, MPI_INT, master, orden, MPI_COMM_WORLD);
             }
         }
+        printf("Tiempo comunicación rank#%d: %g segundos\n", rank, totalComm);
+        MPI_Reduce(&totalComm, &globalComm, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
         MPI_Finalize();
     }
     return 0;
